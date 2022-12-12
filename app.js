@@ -32,7 +32,7 @@ app.post("/register/", async (request, response) => {
   const { username, password, name, gender } = request.body;
   const selectUserQuery = `SELECT * FROM user WHERE username = '${username}';`;
   const dbUser = await db.get(selectUserQuery);
-  if (dbUser) {
+  if (dbUser !== undefined) {
     response.status(400);
     response.send("User already exists");
   } else if (password.length < 6) {
@@ -42,7 +42,7 @@ app.post("/register/", async (request, response) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     const addNewUserQuery = `
         INSERT INTO user (name, username, password, gender)
-        VALUES ('${name}','${username}','${password}','${gender}'); `;
+        VALUES ('${name}','${username}','${hashedPassword}','${gender}'); `;
     await db.run(addNewUserQuery);
     response.send("User created successfully");
   }
@@ -54,19 +54,20 @@ app.post("/login/", async (request, response) => {
   const selectUserQuery = `
         SELECT * FROM user WHERE username = '${username}';`;
   const dbUser = await db.get(selectUserQuery);
-  if (!dbUser) {
-    response.status(400);
-    response.send("Invalid user");
-  } else {
+  if (dbUser !== undefined) {
     const isPasswordMatched = await bcrypt.compare(password, dbUser.password);
     if (!isPasswordMatched) {
+      // is password false
       response.status(400);
-      response.send("Invalid Password");
+      response.send("Invalid password");
     } else {
       const payload = { username };
       const jwtToken = jwt.sign(payload, "My_secret_key");
       response.send({ jwtToken });
     }
+  } else {
+    response.status(400);
+    response.send("Invalid user");
   }
 });
 
@@ -144,18 +145,18 @@ app.get("/user/following/", authenticateUser, async (request, response) => {
 app.get("/user/followers/", authenticateUser, async (request, response) => {
   const { username } = request;
   const selectUserQuery = `
-        SELECT * FROM user WHERE username = '${username}';`;
+        SELECT user_id FROM user WHERE username = '${username}';`;
   const dbUser = await db.get(selectUserQuery);
-  const followingUsersQuery = ` 
-  SELECT following_user_id FROM follower
-  WHERE follower_user_id = ${dbUser.user_id};`;
-  const followingUsersObjectsList = await db.all(followingUsersQuery);
-  const followerUsersList = followingUsersObjectsList.map((object) => {
-    return object["following_user_id"];
+  const followerUsersQuery = `
+  SELECT follower_user_id FROM follower
+  WHERE following_user_id = ${dbUser.user_id};`;
+  const followerUsersObjectsList = await db.all(followerUsersQuery);
+  const followerUsersList = followerUsersObjectsList.map((object) => {
+    return object["follower_user_id"];
   });
   const getFollowersQuery = `
     SELECT user.name AS name
-    FROM user 
+    FROM user
     WHERE user_id IN (${followerUsersList}); `;
   const followers = await db.all(getFollowersQuery);
   response.send(followers);
